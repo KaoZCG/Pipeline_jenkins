@@ -37,7 +37,7 @@ pipeline {
                     TARGET_IP=\$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' test-securedev-container)
                     echo "Atacando objetivo en http://\$TARGET_IP:5000"
                     
-                    docker run --name zap-scanner -t zaproxy/zap2docker-stable zap-baseline.py -t http://\$TARGET_IP:5000 -r zap_report.html || true
+                    docker run --name zap-scanner -t owasp/zap2docker-stable zap-baseline.py -t http://\$TARGET_IP:5000 -r zap_report.html || true
                     """
                     
                     // 4. Extraer el reporte de seguridad desde el contenedor ZAP al Jenkins

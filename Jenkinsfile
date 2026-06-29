@@ -24,6 +24,7 @@ pipeline {
                     // 1. Limpieza preventiva
                     sh 'docker rm -f test-securedev-container || true'
                     sh 'docker rm -f zap-scanner || true'
+                    sh 'docker volume rm zap_report_vol || true'
                     
                     // 2. Levantar la aplicación temporal para ser atacada
                     sh 'docker run -d -p 5050:${PORT} --name test-securedev-container ${IMAGE_NAME}:latest'
@@ -31,13 +32,13 @@ pipeline {
                     // Pausa de 10 segundos para asegurar que Flask encendió completamente
                     sleep 10
                     
-                    // 3. Obtener IP interna y Lanzar ataque ZAP (Baseline Scan) usando la imagen oficial de GHCR
-                    // NOTA: Usamos || true al final para que el pipeline no falle de inmediato si ZAP encuentra algo.
+                    // 3. Obtener IP interna y Lanzar ataque ZAP
+                    // TRUCO: Usamos -u root y -v zap_report_vol para engañar a la restricción de ZAP
                     sh """
                     TARGET_IP=\$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' test-securedev-container)
                     echo "Atacando objetivo en http://\$TARGET_IP:5000"
                     
-                    docker run --name zap-scanner -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://\$TARGET_IP:5000 -r zap_report.html || true
+                    docker run --name zap-scanner -u root -v zap_report_vol:/zap/wrk -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://\$TARGET_IP:5000 -r zap_report.html || true
                     """
                     
                     // 4. Extraer el reporte de seguridad desde el contenedor ZAP al Jenkins
@@ -46,6 +47,7 @@ pipeline {
                     // 5. Limpieza post-ataque
                     sh 'docker rm -f zap-scanner || true'
                     sh 'docker rm -f test-securedev-container || true'
+                    sh 'docker volume rm zap_report_vol || true'
                 }
             }
         }

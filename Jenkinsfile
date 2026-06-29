@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        // Variables de entorno para Docker
         IMAGE_NAME = "securedev-app"
         CONTAINER_NAME = "securedev-container"
         PORT = "5000"
@@ -11,30 +10,42 @@ pipeline {
     stages {
         stage('Construcción (Build)') {
             steps {
-                echo 'Fase de Construcción: Empaquetando la aplicación en Docker...'
+                echo 'Fase de Construcción: Empaquetando la aplicación...'
                 script {
-                    // Construye la imagen de Docker usando el Dockerfile
                     sh 'docker build -t ${IMAGE_NAME}:latest .'
                 }
             }
         }
 
-        stage('Pruebas Automatizadas de Seguridad (DAST)') {
+        stage('Pruebas Automatizadas de Seguridad (DAST - OWASP ZAP)') {
             steps {
-                echo 'Fase de Pruebas: Ejecutando OWASP ZAP (Placeholder)...'
-                // Aquí levantaremos temporalmente el contenedor para que ZAP lo ataque.
-                // La configuración exacta de ZAP la haremos en la Parte 3.
+                echo 'Fase de Pruebas: Iniciando escaneo dinámico con OWASP ZAP...'
                 script {
-                    echo 'Preparando entorno para pruebas de penetración continuas...'
-                    sh 'docker run -d -p 5050:${PORT} --name test-${CONTAINER_NAME} ${IMAGE_NAME}:latest'
-                    // Simulación de pausa para que el servidor levante antes del escaneo
-                    sleep 5
+                    // 1. Limpieza preventiva
+                    sh 'docker rm -f test-securedev-container || true'
+                    sh 'docker rm -f zap-scanner || true'
                     
-                    // (En la Parte 3 inyectaremos el comando de ZAP aquí)
+                    // 2. Levantar la aplicación temporal para ser atacada
+                    sh 'docker run -d -p 5050:${PORT} --name test-securedev-container ${IMAGE_NAME}:latest'
                     
-                    // Limpieza del contenedor de pruebas
-                    sh 'docker stop test-${CONTAINER_NAME} || true'
-                    sh 'docker rm test-${CONTAINER_NAME} || true'
+                    // Pausa de 10 segundos para asegurar que Flask encendió completamente
+                    sleep 10
+                    
+                    // 3. Obtener IP interna y Lanzar ataque ZAP (Baseline Scan)
+                    // NOTA: Usamos || true al final para que el pipeline no falle de inmediato si ZAP encuentra algo.
+                    sh """
+                    TARGET_IP=\$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' test-securedev-container)
+                    echo "Atacando objetivo en http://\$TARGET_IP:5000"
+                    
+                    docker run --name zap-scanner -t zaproxy/zap-baseline zap-baseline.py -t http://\$TARGET_IP:5000 -r zap_report.html || true
+                    """
+                    
+                    // 4. Extraer el reporte de seguridad desde el contenedor ZAP al Jenkins
+                    sh 'docker cp zap-scanner:/zap/wrk/zap_report.html ./zap_report.html || true'
+                    
+                    // 5. Limpieza post-ataque
+                    sh 'docker rm -f zap-scanner || true'
+                    sh 'docker rm -f test-securedev-container || true'
                 }
             }
         }
@@ -43,11 +54,7 @@ pipeline {
             steps {
                 echo 'Fase de Despliegue: Levantando la aplicación en Producción...'
                 script {
-                    // Detener y eliminar el contenedor viejo si existe para evitar conflictos de puerto
-                    sh 'docker stop ${CONTAINER_NAME} || true'
-                    sh 'docker rm ${CONTAINER_NAME} || true'
-                    
-                    // Desplegar la nueva versión segura
+                    sh 'docker rm -f ${CONTAINER_NAME} || true'
                     sh 'docker run -d -p ${PORT}:${PORT} --name ${CONTAINER_NAME} ${IMAGE_NAME}:latest'
                 }
             }
@@ -56,13 +63,15 @@ pipeline {
 
     post {
         always {
-            echo 'Pipeline finalizado. Generando registros de trazabilidad...'
+            echo 'Pipeline finalizado. Generando registros de trazabilidad y reportes...'
+            // ESTO ES CLAVE: Guarda el archivo HTML en la interfaz de Jenkins
+            archiveArtifacts artifacts: 'zap_report.html', allowEmptyArchive: true
         }
         success {
-            echo '¡Despliegue exitoso y sin vulnerabilidades críticas!'
+            echo '¡Despliegue exitoso!'
         }
         failure {
-            echo '¡Fallo en el pipeline! Revisa los logs de seguridad.'
+            echo '¡Fallo en el pipeline! Revisa los logs.'
         }
     }
 }

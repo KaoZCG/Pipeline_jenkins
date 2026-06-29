@@ -31,13 +31,13 @@ pipeline {
                     // Pausa de 10 segundos para asegurar que Flask encendió completamente
                     sleep 10
                     
-                    // 3. Obtener IP interna y Lanzar ataque ZAP (Baseline Scan) usando la imagen oficial
+                    // 3. Obtener IP interna y Lanzar ataque ZAP (Baseline Scan) usando la imagen oficial de GHCR
                     // NOTA: Usamos || true al final para que el pipeline no falle de inmediato si ZAP encuentra algo.
                     sh """
                     TARGET_IP=\$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' test-securedev-container)
                     echo "Atacando objetivo en http://\$TARGET_IP:5000"
                     
-                    docker run --name zap-scanner -t owasp/zap2docker-stable zap-baseline.py -t http://\$TARGET_IP:5000 -r zap_report.html || true
+                    docker run --name zap-scanner -t ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://\$TARGET_IP:5000 -r zap_report.html || true
                     """
                     
                     // 4. Extraer el reporte de seguridad desde el contenedor ZAP al Jenkins

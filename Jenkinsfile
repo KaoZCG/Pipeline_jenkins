@@ -26,7 +26,7 @@ pipeline {
                 // La configuración exacta de ZAP la haremos en la Parte 3.
                 script {
                     echo 'Preparando entorno para pruebas de penetración continuas...'
-                    sh 'docker run -d -p 8080:${PORT} --name test-${CONTAINER_NAME} ${IMAGE_NAME}:latest'
+                    sh 'docker run -d -p 5050:${PORT} --name test-${CONTAINER_NAME} ${IMAGE_NAME}:latest'
                     // Simulación de pausa para que el servidor levante antes del escaneo
                     sleep 5
                     
